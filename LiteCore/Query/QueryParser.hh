@@ -132,7 +132,6 @@ namespace litecore {
         unsigned writeSelectListClause(const fleece::impl::Dict *operands, slice key, const char *sql, bool aggregatesOK =false);
 
         void writeWhereClause(const fleece::impl::Value *where);
-        void writeDeletionTest(const std::string &alias, bool isDeleted = false);
 
         void addAlias(const std::string &alias, aliasType);
         void parseFromClause(const fleece::impl::Value *from);
@@ -213,7 +212,6 @@ namespace litecore {
         unsigned _1stCustomResultCol {0};           // Index of 1st result after _baseResultColumns
         bool _aggregatesOK {false};                 // Are aggregate fns OK to call?
         bool _isAggregateQuery {false};             // Is this an aggregate query?
-        bool _checkedDeleted {false};               // Has query accessed _deleted meta-property?
         bool _checkedExpiration {false};            // Has query accessed _expiration meta-property?
         Collation _collation;                       // Collation in use during parse
         bool _collationUsed {true};                 // Emitted SQL "COLLATION" yet?

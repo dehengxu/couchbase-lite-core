@@ -63,9 +63,10 @@ namespace litecore {
         virtual sequence_t lastSequence() const =0;
         virtual uint64_t purgeCount() const =0;
 
-        virtual void erase() =0;
+        virtual void shareSequencesWith(KeyStore&) =0;
 
 #if ENABLE_DELETE_KEY_STORES
+        virtual void erase() =0;
         void deleteKeyStore(Transaction&);
 #endif
 
@@ -91,15 +92,22 @@ namespace litecore {
 
         /** Invokes the callback once for each document found in the database.
             The callback is given the docID, body and sequence, and returns a string.
-            The return value is the collected strings, in the same order as the docIDs. */
+            The return value is the collected strings, in the same order as the docIDs.
+            If a docID doesn't exist in the database, the corresponding result will be nullslice. */
         virtual std::vector<alloc_slice> withDocBodies(const std::vector<slice> &docIDs,
                                                        WithDocBodyCallback callback) =0;
 
         //////// Writing:
 
-        /** Core write method. If replacingSequence is not null, will only update the
-            record if its existing sequence matches. (Or if the record doesn't already
-            exist, in the case where *replacingSequence == 0.) */
+        /** Core write method.
+            If replacingSequence is not null, will only update the
+            record if its existing sequence matches (or if the record doesn't already
+            exist, in the case where *replacingSequence == 0) ... else returns 0.
+         
+            If newSequence is false, the document's current sequence will not be altered;
+            this must be used with *replacingSequence > 0.
+
+            Returns the new sequence number, or 0 on conflict. */
         virtual sequence_t set(slice key, slice version, slice value,
                                DocumentFlags,
                                Transaction&,
@@ -119,6 +127,7 @@ namespace litecore {
         /** Sets a flag of a record, without having to read/write the Record. */
         virtual bool setDocumentFlag(slice key, sequence_t, DocumentFlags, Transaction&) =0;
 
+        virtual void transactionWillEnd(bool commit)                { }
 
         //////// Expiration:
 
@@ -175,6 +184,8 @@ namespace litecore {
         KeyStore(const KeyStore&) = delete;     // not copyable
         KeyStore& operator=(const KeyStore&) = delete;
 
+        friend class BothKeyStore;
+        friend class BothEnumeratorImpl;
         friend class DataFile;
         friend class RecordEnumerator;
         friend class Query;

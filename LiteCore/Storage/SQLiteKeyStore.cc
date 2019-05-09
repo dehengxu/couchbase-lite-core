@@ -143,20 +143,33 @@ namespace litecore {
     }
 
 
+    void SQLiteKeyStore::shareSequencesWith(KeyStore &source) {
+        _sequencesOwner = dynamic_cast<SQLiteKeyStore*>(&source);
+    }
+
+
     sequence_t SQLiteKeyStore::lastSequence() const {
-        if (_lastSequence >= 0)
-            return _lastSequence;
-        sequence_t seq = db().lastSequence(_name);
-        if (db().inTransaction())
-            _lastSequence = seq;
-        return seq;
+        if (_sequencesOwner) {
+            return _sequencesOwner->lastSequence();
+        } else {
+            if (_lastSequence >= 0)
+                return _lastSequence;
+            sequence_t seq = db().lastSequence(_name);
+            if (db().inTransaction())
+                _lastSequence = seq;
+            return seq;
+        }
     }
 
     
     void SQLiteKeyStore::setLastSequence(sequence_t seq) {
-        if (_capabilities.sequences) {
-            _lastSequence = seq;
-            _lastSequenceChanged = true;
+        if (_sequencesOwner) {
+            _sequencesOwner->setLastSequence(seq);
+        } else {
+            if (_capabilities.sequences) {
+                _lastSequence = seq;
+                _lastSequenceChanged = true;
+            }
         }
     }
 
@@ -182,6 +195,7 @@ namespace litecore {
 
     void SQLiteKeyStore::transactionWillEnd(bool commit) {
         if (_lastSequenceChanged) {
+            Assert(!_sequencesOwner);
             if (commit)
                 db().setLastSequence(*this, _lastSequence);
             _lastSequenceChanged = false;
@@ -209,11 +223,6 @@ namespace litecore {
     static slice textColumnAsSlice(const SQLite::Column &col) {
         return slice(col.getText(nullptr), col.getBytes());
     }
-
-
-    // OPT: Would be nice to avoid copying key/vers/body here; this would require Record to
-    // know that the pointers are ephemeral, and create copies if they're accessed as
-    // alloc_slice (not just slice).
 
 
     // Gets flags from col 1, version from col 3, and body (or its length) from col 4
@@ -394,13 +403,15 @@ namespace litecore {
     }
 
 
+#if ENABLE_DELETE_KEY_STORES
     void SQLiteKeyStore::erase() {
         Transaction t(db());
         db().exec(string("DELETE FROM kv_"+name()));
         setLastSequence(0);
         t.commit();
     }
-
+#endif
+    
 
     void SQLiteKeyStore::createTrigger(string_view triggerName,
                                        string_view triggerSuffix,

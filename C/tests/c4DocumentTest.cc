@@ -118,10 +118,10 @@ N_WAY_TEST_CASE_METHOD(C4Test, "Document FindDocAncestors", "[Document][C]") {
 
     createRev(doc2, kRevID, kFleeceBody);
     createRev(doc2, kRev2ID, kFleeceBody);
-    createRev(doc2, kRev3ID, kFleeceBody);
+    createRev(doc2, kRev3ID, kFleeceBody, kRevDeleted);
 
     createRev(doc3, kRevID, kFleeceBody);
-    createRev(doc3, kRev2ID, kFleeceBody);
+    createRev(doc3, kRev2ID, kFleeceBody, kRevDeleted);
     createRev(doc3, kRev3ID, kFleeceBody);
 
     C4SliceResult ancestors[4] = {};

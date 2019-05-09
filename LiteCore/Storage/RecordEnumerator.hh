@@ -96,7 +96,9 @@ namespace litecore {
         public:
             virtual ~Impl()                         { }
             virtual bool next() =0;
-            virtual bool read(Record&) =0;
+            virtual bool read(Record&) const =0;
+            virtual slice key() const =0;
+            virtual sequence_t sequence() const =0;
         };
 
     private:

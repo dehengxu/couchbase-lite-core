@@ -340,27 +340,10 @@ namespace litecore {
 
 
     void QueryParser::writeWhereClause(const Value *where) {
-        _checkedDeleted = false;
-        _sql << " WHERE ";
         if (where) {
-            _sql << "(";
+            _sql << " WHERE ";
             parseNode(where);
-            _sql << ")";
         }
-        if (!_checkedDeleted) {
-            if (where)
-                _sql << " AND ";
-            writeDeletionTest(_dbAlias);
-        }
-    }
-
-
-    void QueryParser::writeDeletionTest(const string &alias, bool isDeleted) {
-        _sql << "(";
-        if (!alias.empty())
-            _sql << quoteTableName(alias) << '.';
-        _sql << "flags & " << (unsigned)DocumentFlags::kDeleted
-             << (isDeleted ? " != 0)" : " = 0)");
     }
 
 
@@ -502,17 +485,9 @@ namespace litecore {
                         _sql << " " << kJoinTypeNames[ joinType ];
                         _sql << " JOIN " << _tableName << " AS \"" << alias << "\"";
 
-                        _sql << " ON ";
-                        _checkedDeleted = false;
                         if (on) {
-                            _sql << "(";
+                            _sql << " ON ";
                             parseNode(on);
-                            _sql << ")";
-                        }
-                        if (!_checkedDeleted) {
-                            if (on)
-                                _sql << " AND ";
-                            writeDeletionTest(alias);
                         }
                         break;
                     }
@@ -1323,9 +1298,8 @@ namespace litecore {
                 return;
             } else if (meta == kDeletedProperty) {
                 require(fn == kValueFnName, "can't use '_deleted' in this context");
-                writeDeletionTest(alias, true);
-                _checkedDeleted = true;     // note that the query has tested _deleted
-                return;
+                fail("Sorry, the '_deleted' property isn't currently available"); //FIXME
+                //return;
             }
         }
 

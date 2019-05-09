@@ -106,7 +106,9 @@ TEST_CASE_METHOD(N1QLParserTest, "N1QL properties", "[Query][N1QL][C]") {
 
     CHECK(translate("select meta.id") == "{'WHAT':[['._id']]}");
     CHECK(translate("select meta.sequence") == "{'WHAT':[['._sequence']]}");
+#if 0 // TODO: Re-enable _deleted test in queries
     CHECK(translate("select meta.deleted") == "{'WHAT':[['._deleted']]}");
+#endif
     CHECK(translate("select db.meta.id") == "{'WHAT':[['.db._id']]}");
     CHECK(translate("select meta.bogus") == "");    // only specific meta properties allowed
     CHECK(translate("select db.meta.bogus") == "");

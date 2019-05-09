@@ -323,12 +323,18 @@ namespace litecore {
     }
 
     void DataFile::transactionEnding(Transaction*, bool committing) {
+        // Save changes to shared keys:
         if (_documentKeys) {
             if (committing)
                 _documentKeys->save();
             else
                 _documentKeys->revert();
         }
+
+        // Notify key-stores so they can save state:
+        forOpenKeyStores([committing](KeyStore &ks) {
+            ks.transactionWillEnd(committing);
+        });
     }
     
     void DataFile::endTransactionScope(Transaction* t) {

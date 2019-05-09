@@ -47,7 +47,15 @@ namespace litecore {
             return _stmt->executeStep();
         }
 
-        virtual bool read(Record &rec) override {
+       virtual slice key() const override {
+           return SQLiteKeyStore::columnAsSlice(_stmt->getColumn(2));
+       }
+
+       virtual sequence_t sequence() const override {
+           return (int64_t)_stmt->getColumn(0);
+       }
+
+        virtual bool read(Record &rec) const override {
             rec.updateSequence((int64_t)_stmt->getColumn(0));
             rec.setFlags((DocumentFlags)(int)_stmt->getColumn(1));
             rec.setKey(SQLiteKeyStore::columnAsSlice(_stmt->getColumn(2)));

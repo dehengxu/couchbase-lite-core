@@ -125,10 +125,11 @@ namespace litecore {
         enum class SchemaVersion {
             None            = 0,    // Newly created database
             MinReadable     = 201,  // Cannot open earlier versions than this (CBL 2.0)
-            MaxReadable     = 399,  // Cannot open versions newer than this
+            MaxReadable     = 499,  // Cannot open versions newer than this
 
             WithIndexTable  = 301,  // Added 'indexes' table (CBL 2.5)
             WithPurgeCount  = 302,  // Added 'purgeCnt' column to KeyStores (CBL 2.7)
+            WithDeletedTable= 400,  // Added 'deleted' KeyStore for deleted docs (CBL 2.8?)
         };
 
         void reopenSQLiteHandle();
@@ -148,6 +149,7 @@ namespace litecore {
         std::vector<SQLiteIndexSpec> getIndexesOldStyle(const KeyStore *store =nullptr);
 
         std::unique_ptr<SQLite::Database>    _sqlDb;         // SQLite database object
+        std::unique_ptr<SQLiteKeyStore> _realDefaultKeyStore;
         std::unique_ptr<SQLite::Statement>   _getLastSeqStmt, _setLastSeqStmt;
         std::unique_ptr<SQLite::Statement>   _getPurgeCntStmt, _setPurgeCntStmt;
         CollationContextVector               _collationContexts;

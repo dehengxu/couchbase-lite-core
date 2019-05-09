@@ -359,6 +359,7 @@ N_WAY_TEST_CASE_METHOD (DataFileTestFixture, "DataFile Conditional Write", "[Dat
 }
 
 
+#if ENABLE_DELETE_KEY_STORES
 N_WAY_TEST_CASE_METHOD (DataFileTestFixture, "DataFile KeyStoreDelete", "[DataFile]") {
     KeyStore &s = db->getKeyStore("store");
     alloc_slice key("key");
@@ -372,6 +373,7 @@ N_WAY_TEST_CASE_METHOD (DataFileTestFixture, "DataFile KeyStoreDelete", "[DataFi
     Record rec = s.get(key);
     REQUIRE_FALSE(rec.exists());
 }
+#endif
 
 
 N_WAY_TEST_CASE_METHOD (DataFileTestFixture, "DataFile KeyStoreAfterClose", "[DataFile][!throws]") {
