@@ -145,6 +145,10 @@ namespace litecore {
     }
 
 
+    // Returns true if the expression only matches deleted documents.
+    static bool matchesOnlyDeletedDocs(const Value *expr NONNULL);
+
+
 #pragma mark - QUERY PARSER TOP LEVEL:
 
 
@@ -161,6 +165,7 @@ namespace litecore {
         _columnTitles.clear();
         _1stCustomResultCol = 0;
         _isAggregateQuery = _aggregatesOK = _propertiesUseSourcePrefix = _checkedExpiration = false;
+        _queryingDeletedDocs = false;
 
         _aliases.insert({_dbAlias, kDBAlias});
     }
@@ -221,6 +226,12 @@ namespace litecore {
 
 
     void QueryParser::writeSelect(const Value *where, const Dict *operands) {
+        // Determine whether this is a query on deleted documents. This has to be done before
+        // writing the FROM clause, because it affects the table being queried.
+        _queryingDeletedDocs = where && matchesOnlyDeletedDocs(where);
+        if (_queryingDeletedDocs)
+            _tableName = _delegate.deletedTableName();
+
         // Find all the joins in the FROM clause first, to populate alias info. This has to be done
         // before writing the WHAT clause, because that will depend on the aliases.
         auto from = getCaseInsensitive(operands, "FROM"_sl);
@@ -620,6 +631,47 @@ namespace litecore {
         } else {
             writeSQLString(str);
         }
+    }
+
+
+    // Returns true if the expression is a reference to the "_deleted" meta-property
+    static bool isDeletedPropertyRef(const Value *expr NONNULL) {
+        if (auto operation = expr->asArray(); operation && !operation->empty()) {
+            if (slice op = operation->get(0)->asString(); op.hasPrefix('.')) {
+                op.moveStart(1);
+                if (op == kDeletedProperty)     // ["._deleted"]
+                    return operation->count() == 1;
+                else if (op.size == 0)          // [".", "_deleted"]
+                    return operation->count() == 2
+                        && operation->get(1)->asString() == kDeletedProperty;
+            }
+        }
+        return false;
+    }
+
+
+    // Returns true if the expression only matches deleted documents.
+    static bool matchesOnlyDeletedDocs(const Value *expr) {
+        if (isDeletedPropertyRef(expr))
+            return true;
+        if (auto operation = expr->asArray(); operation && operation->count() >= 2) {
+            Array::iterator operands(operation);
+            slice op = operands->asString();
+            ++operands;
+            if (op == "=" || op == "==") {
+                // Match ["=", ["._deleted"], true] or ["=", true, ["._deleted"]]
+                if (operands.count() == 2) {
+                    return (operands[0]->asBool() == true && isDeletedPropertyRef(operands[1]))
+                        || (operands[1]->asBool() == true && isDeletedPropertyRef(operands[0]));
+                }
+            } else if (op.caseEquivalent("AND")) {
+                // Match ["AND", ... ["._deleted"] ...]
+                for(; operands; ++operands)
+                    if (matchesOnlyDeletedDocs(operands.value()))
+                        return true;
+            }
+        }
+        return false;
     }
 
 
@@ -1298,8 +1350,10 @@ namespace litecore {
                 return;
             } else if (meta == kDeletedProperty) {
                 require(fn == kValueFnName, "can't use '_deleted' in this context");
-                fail("Sorry, the '_deleted' property isn't currently available"); //FIXME
-                //return;
+                require(_queryingDeletedDocs,
+                        "a query using the `_deleted` meta-property must match only deleted documents");
+                _sql << "true";
+                return;
             }
         }
 

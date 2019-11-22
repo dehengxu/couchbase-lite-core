@@ -97,6 +97,12 @@ namespace litecore {
     }
 
 
+    std::string SQLiteKeyStore::deletedTableName() const {
+        Assert(tableName() == "kv_default");  // rethink the naming when we implement collections...
+        return "kv_deleted";
+    }
+
+
     string SQLiteKeyStore::subst(const char *sqlTemplate) const {
         string sql(sqlTemplate);
         size_t pos;

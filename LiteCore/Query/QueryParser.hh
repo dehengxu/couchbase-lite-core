@@ -43,6 +43,7 @@ namespace litecore {
         public:
             virtual ~delegate() =default;
             virtual std::string tableName() const =0;
+            virtual std::string deletedTableName() const =0;
             virtual std::string bodyColumnName() const        {return "body";}
             virtual std::string FTSTableName(const std::string &property) const =0;
             virtual std::string unnestedTableName(const std::string &property) const =0;
@@ -216,6 +217,7 @@ namespace litecore {
         Collation _collation;                       // Collation in use during parse
         bool _collationUsed {true};                 // Emitted SQL "COLLATION" yet?
         bool _functionWantsCollation {false};       // The current function wants to receive collation in its argument list
+        bool _queryingDeletedDocs {false};          // True if WHERE clause matches only deleteded docs
     };
 
 }

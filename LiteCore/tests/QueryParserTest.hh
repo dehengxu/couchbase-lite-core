@@ -38,6 +38,9 @@ protected:
     virtual std::string tableName() const override {
         return "kv_default";
     }
+    virtual std::string deletedTableName() const override {
+        return "kv_deleted";
+    }
     virtual std::string FTSTableName(const std::string &property) const override {
         return tableName() + "::" + property;
     }

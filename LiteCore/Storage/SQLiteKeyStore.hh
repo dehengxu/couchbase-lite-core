@@ -72,7 +72,8 @@ namespace litecore {
         void createBlobsIndex();
 
         // QueryParser::delegate:
-        virtual std::string tableName() const override  {return std::string("kv_") + name();}
+        virtual std::string tableName() const override        {return std::string("kv_") + name();}
+        virtual std::string deletedTableName() const override;
         virtual std::string FTSTableName(const std::string &property) const override;
         virtual std::string unnestedTableName(const std::string &property) const override;
 #ifdef COUCHBASE_ENTERPRISE
