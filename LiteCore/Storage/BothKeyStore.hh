@@ -13,10 +13,8 @@ namespace litecore {
 
     /** A fake KeyStore that combines a real KeyStore for live documents and another for tombstones,
         and makes them appear to be a single store.
-        All documents in the live store are non-deleted; all in the dead store are deleted.
-        A document in the live store takes priority over one with the same ID in the dead store.
-        Sequence numbers are shared across both stores.
-     */
+        All live documents are in the live store; all deleted documents are in the dead store.
+        Sequence numbers are shared across both stores. */
     class BothKeyStore : public KeyStore {
     public:
         BothKeyStore(KeyStore *liveStore NONNULL, KeyStore *deadStore NONNULL);
@@ -24,7 +22,8 @@ namespace litecore {
 
         void shareSequencesWith(KeyStore&) override         {Assert(false);}
 
-        virtual uint64_t recordCount() const override       {return _liveStore->recordCount();}
+        virtual uint64_t recordCount(bool includeDeleted =false) const override;
+        
         virtual sequence_t lastSequence() const override    {return _liveStore->lastSequence();}
         virtual uint64_t purgeCount() const override        {return _liveStore->purgeCount();}
 
@@ -57,7 +56,10 @@ namespace litecore {
         }
 
 
-        virtual bool setDocumentFlag(slice key, sequence_t seq, DocumentFlags flags, Transaction &t) override {
+        virtual bool setDocumentFlag(slice key, sequence_t seq,
+                                     DocumentFlags flags, Transaction &t) override
+        {
+            Assert(!(flags & DocumentFlags::kDeleted));     // this method isn't used for deleting
             return _liveStore->setDocumentFlag(key, seq, flags, t)
                 || _deadStore->setDocumentFlag(key, seq, flags, t);
         }

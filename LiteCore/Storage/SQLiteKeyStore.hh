@@ -37,7 +37,7 @@ namespace litecore {
     /** SQLite implementation of KeyStore; corresponds to a SQL table. */
     class SQLiteKeyStore : public KeyStore, public QueryParser::delegate {
     public:
-        uint64_t recordCount() const override;
+        uint64_t recordCount(bool includeDeleted =false) const override;
         sequence_t lastSequence() const override;
         uint64_t purgeCount() const override;
 

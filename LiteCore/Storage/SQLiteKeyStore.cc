@@ -134,18 +134,12 @@ namespace litecore {
     }
 
 
-    uint64_t SQLiteKeyStore::recordCount() const {
-        if (!_recCountStmt) {
-            stringstream sql;
-            sql << "SELECT count(*) FROM kv_" << _name << " WHERE (flags & 1) != 1";
-            compile(_recCountStmt, sql.str().c_str());
-        }
-        UsingStatement u(_recCountStmt);
-        if (_recCountStmt->executeStep()) {
-            auto count = (int64_t)_recCountStmt->getColumn(0);
-            return count;
-        }
-        return 0;
+    uint64_t SQLiteKeyStore::recordCount(bool includeDeleted) const {
+        stringstream sql;
+        sql << "SELECT count(*) FROM kv_" << _name;
+        if (!includeDeleted)
+            sql << " WHERE (flags & 1) != 1";
+        return db().intQuery(sql.str().c_str());
     }
 
 
