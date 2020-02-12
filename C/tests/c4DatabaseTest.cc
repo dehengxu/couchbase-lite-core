@@ -774,6 +774,13 @@ static void testOpeningOlderDBFixture(const string & dbPath,
 
 TEST_CASE("Database Upgrade From 2.7", "[Database][Upgrade][C]") {
     testOpeningOlderDBFixture("upgrade_2.7.cblite2", 0);
-    testOpeningOlderDBFixture("upgrade_2.7.cblite2", kC4DB_NoUpgrade);
+    testOpeningOlderDBFixture("upgrade_2.7.cblite2", kC4DB_NoUpgrade, kC4ErrorCantUpgradeDatabase);
     testOpeningOlderDBFixture("upgrade_2.7.cblite2", kC4DB_ReadOnly);
+}
+
+
+TEST_CASE("Database Upgrade From 2.8", "[Database][Upgrade][C]") {
+    testOpeningOlderDBFixture("upgrade_2.8.cblite2", 0);
+    testOpeningOlderDBFixture("upgrade_2.8.cblite2", kC4DB_NoUpgrade);
+    testOpeningOlderDBFixture("upgrade_2.8.cblite2", kC4DB_ReadOnly);
 }

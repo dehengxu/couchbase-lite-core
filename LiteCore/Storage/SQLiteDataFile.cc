@@ -195,15 +195,16 @@ namespace litecore {
             if (_schemaVersion == SchemaVersion::None) {
                 isNew = true;
                 // Configure persistent db settings, and create the schema:
-                _exec("PRAGMA journal_mode=WAL; "        // faster writes, better concurrency
-                     "PRAGMA auto_vacuum=incremental; " // incremental vacuum mode
-                     "BEGIN; "
-                     "CREATE TABLE IF NOT EXISTS "      // Table of metadata about KeyStores
-                     "  kvmeta (name TEXT PRIMARY KEY, lastSeq INTEGER DEFAULT 0, purgeCnt INTEGER DEFAULT 0) WITHOUT ROWID; "
-                     "PRAGMA user_version=400; "
-                     "END;"
-                     );
-                _schemaVersion = SchemaVersion::WithPurgeCount;
+                _exec(format("PRAGMA journal_mode=WAL; "        // faster writes, better concurrency
+                             "PRAGMA auto_vacuum=incremental; " // incremental vacuum mode
+                             "BEGIN; "
+                             "CREATE TABLE IF NOT EXISTS "      // Table of metadata about KeyStores
+                             "  kvmeta (name TEXT PRIMARY KEY, lastSeq INTEGER DEFAULT 0, "
+                                       "purgeCnt INTEGER DEFAULT 0) WITHOUT ROWID; "
+                             "PRAGMA user_version=%d; "
+                             "END;",
+                             SchemaVersion::Current));
+                _schemaVersion = SchemaVersion::Current;
                 // Create the default KeyStore's table:
                 (void)defaultKeyStore();
             } else if (_schemaVersion < SchemaVersion::MinReadable) {
@@ -212,55 +213,36 @@ namespace litecore {
                 error::_throw(error::DatabaseTooNew);
             }
 
-            if (_schemaVersion < SchemaVersion::WithPurgeCount) {
+            _exec(format("PRAGMA cache_size=%d; "            // Memory cache
+                         "PRAGMA mmap_size=%d; "             // Memory-mapped reads
+                         "PRAGMA synchronous=normal; "       // Speeds up commits
+                         "PRAGMA journal_size_limit=%lld; "  // Limit WAL disk usage
+                         "PRAGMA case_sensitive_like=true",  // Case sensitive LIKE, for N1QL compat
+                         -(int)kCacheSize/1024, kMMapSize, (long long)kJournalSize));
+
+            bool ok = upgradeSchema(SchemaVersion::WithPurgeCount,
+                                    "Adding purgeCnt column", [&] {
                 // Schema upgrade: Add the `purgeCnt` column to the kvmeta table.
                 // We can postpone this schema change if the db is read-only, since the purge count
                 // is only used to mark changes to the database, and we won't be changing it.
-                if (options().writeable) {
-                    if (!options().upgradeable)
-                        error::_throw(error::CantUpgradeDatabase);
-                    try {
-                        _exec("ALTER TABLE kvmeta ADD COLUMN purgeCnt INTEGER DEFAULT 0; "
-                              "PRAGMA user_version=302; ");
-                        _schemaVersion = SchemaVersion::WithPurgeCount;
-                    } catch (const SQLite::Exception &x) {
-                        // Recover if the db file itself is read-only
-                        if (x.getErrorCode() != SQLITE_READONLY)
-                            throw;
+                _exec("ALTER TABLE kvmeta ADD COLUMN purgeCnt INTEGER DEFAULT 0");
+            });
+            if (ok) {
+                upgradeSchema(SchemaVersion::WithDeletedTable,
+                              "Migrating deleted docs to 'deleted' KeyStore", [&] {
+                    // Schema upgrade: Migrate deleted docs to separate table.
+                    {
+                        // First create the 'kv_deleted' table by instantitating its KeyStore:
+                        SQLiteKeyStore ks(*this, kDeletedKeyStoreName, options().keyStores);
                     }
-                }
-            }
-
-            if (_schemaVersion < SchemaVersion::WithDeletedTable) {
-                // Migrate deleted docs to separate table:
-                if (!options().upgradeable)
-                    error::_throw(error::CantUpgradeDatabase);
-                logInfo("SCHEMA UPGRADE: Migrating deleted docs to 'dead' KeyStore");
-                (void)defaultKeyStore();    // create the "kv_deleted" table
-                _exec(format("BEGIN;"
-                             "INSERT INTO kv_%s SELECT * FROM kv_%s WHERE (flags&1)!=0;"
-                             "DELETE FROM kv_%s WHERE (flags&1)!=0;"
-                             "PRAGMA user_version=400;"
-                             "END",
-                             kDeletedKeyStoreName.c_str(), kDefaultKeyStoreName.c_str(),
-                             kDefaultKeyStoreName.c_str()));
-                _schemaVersion = SchemaVersion::WithDeletedTable;
+                    // Now move all the deleted docs to the new table:
+                    _exec(format("INSERT INTO kv_%s SELECT * FROM kv_%s WHERE (flags&1)!=0;"
+                                 "DELETE FROM kv_%s WHERE (flags&1)!=0;",
+                                 kDeletedKeyStoreName.c_str(), kDefaultKeyStoreName.c_str(),
+                                 kDefaultKeyStoreName.c_str()));
+                });
             }
         });
-
-        _exec(format("PRAGMA cache_size=%d; "            // Memory cache
-                     "PRAGMA mmap_size=%d; "             // Memory-mapped reads
-                     "PRAGMA synchronous=normal; "       // Speeds up commits
-                     "PRAGMA journal_size_limit=%lld; "  // Limit WAL disk usage
-                     "PRAGMA case_sensitive_like=true",  // Case sensitive LIKE, for N1QL compat
-                     -(int)kCacheSize/1024, kMMapSize, (long long)kJournalSize));
-
-#if DEBUG
-        // Deliberately make unordered queries unpredictable, to expose any LiteCore code that
-        // unintentionally relies on ordering:
-        if (RandomNumber() % 1)
-            _sqlDb->exec("PRAGMA reverse_unordered_selects=1");
-#endif
 
         // Configure number of extra threads to be used by SQLite:
         auto sqlite = _sqlDb->getHandle();
@@ -273,6 +255,51 @@ namespace litecore {
         int rc = register_unicodesn_tokenizer(sqlite);
         if (rc != SQLITE_OK)
             warn("Unable to register FTS tokenizer: SQLite err %d", rc);
+    }
+
+
+    bool SQLiteDataFile::upgradeSchema(SchemaVersion minVersion,
+                                       const char *what,
+                                       function_ref<void()> upgrade)
+    {
+        auto logUpgrade = [&](const char *msg) {
+            logInfo("SCHEMA UPGRADE (%d-%d) %-s", _schemaVersion, minVersion, msg);
+        };
+
+        if (_schemaVersion < minVersion) {
+            if (!options().writeable) {
+                logUpgrade("skipped; cannot upgrade read-only connection");
+                return false;
+            }
+            if (!options().upgradeable) {
+                logUpgrade("blocked: opening with 'NoUpgrade' flag");
+                error::_throw(error::CantUpgradeDatabase);
+            }
+            
+            logUpgrade(what);
+            bool inTransaction = false;
+            try {
+                _exec("BEGIN");
+                inTransaction = true;
+                upgrade();
+                _exec(format("PRAGMA user_version=%d; END", minVersion));
+            } catch (const SQLite::Exception &x) {
+                // Recover if the db file itself is read-only (but not opened with writeable=false)
+                if (x.getErrorCode() == SQLITE_READONLY) {
+                    logUpgrade("skipped; cannot upgrade read-only file");
+                    if (inTransaction)
+                        _exec("ABORT");
+                    auto opts = options();
+                    opts.writeable = false;
+                    setOptions(opts);
+                    return false;
+                } else {
+                    throw;
+                }
+            }
+            _schemaVersion = minVersion;
+        }
+        return true;
     }
 
 
@@ -453,7 +480,7 @@ namespace litecore {
     KeyStore* SQLiteDataFile::newKeyStore(const string &name, KeyStore::Capabilities options) {
         Assert(name != kDeletedKeyStoreName); // can't access this store directly
         auto keyStore = new SQLiteKeyStore(*this, name, options);
-        if (name == kDefaultKeyStoreName) {
+        if (name == kDefaultKeyStoreName && _schemaVersion >= SchemaVersion::WithDeletedTable) {
             // Wrap the default store in a BothKeyStore that manages it and the deleted store
             return new BothKeyStore(keyStore, new SQLiteKeyStore(*this, kDeletedKeyStoreName, options));
         } else {

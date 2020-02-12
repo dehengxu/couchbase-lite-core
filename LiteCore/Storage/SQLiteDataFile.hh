@@ -125,15 +125,18 @@ namespace litecore {
         enum class SchemaVersion {
             None            = 0,    // Newly created database
             MinReadable     = 201,  // Cannot open earlier versions than this (CBL 2.0)
-            MaxReadable     = 499,  // Cannot open versions newer than this
 
             WithIndexTable  = 301,  // Added 'indexes' table (CBL 2.5)
             WithPurgeCount  = 302,  // Added 'purgeCnt' column to KeyStores (CBL 2.7)
             WithDeletedTable= 400,  // Added 'deleted' KeyStore for deleted docs (CBL 2.8?)
+
+            Current         = WithDeletedTable,
+            MaxReadable     = 499,  // Cannot open versions newer than this
         };
 
         void reopenSQLiteHandle();
         void ensureSchemaVersionAtLeast(SchemaVersion);
+        bool upgradeSchema(SchemaVersion minVersion, const char *what, function_ref<void()>);
         void decrypt();
         bool _decrypt(EncryptionAlgorithm, slice key);
         int _exec(const std::string &sql);
