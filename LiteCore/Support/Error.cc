@@ -518,17 +518,23 @@ namespace litecore {
 
 
     void error::_throw(error::LiteCoreError code, const char *fmt, ...) {
-        char *msg = nullptr;
         va_list args;
         va_start(args, fmt);
-        int len = vasprintf(&msg, fmt, args);
+        std::string message = vformat(fmt, args);
         va_end(args);
-        std::string message;
-        if (len >= 0) {
-            message = msg;
-            free(msg);
-        }
         error{LiteCore, code, message}._throw();
+    }
+
+
+    void error::_throwErrno(const char *fmt, ...) {
+        int code = errno;
+        va_list args;
+        va_start(args, fmt);
+        std::string message = vformat(fmt, args);
+        va_end(args);
+        message += ": ";
+        message += strerror(code);
+        error{POSIX, code, message}._throw();
     }
 
 
